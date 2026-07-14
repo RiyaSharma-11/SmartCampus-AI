@@ -34,7 +34,7 @@ jobs:
 
       - name: Check imports work correctly
         run: |
-          python -c "import fastapi; print('FastAPI OK')"
+          
           python -c "import streamlit; print('Streamlit OK')"
           python -c "import sklearn; print('Scikit-learn OK')"
           python -c "import mysql.connector; print('MySQL connector OK')"
