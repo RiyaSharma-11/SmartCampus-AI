@@ -1,0 +1,16 @@
+.venv/
+.env
+__pycache__/
+*.pyc
+.DS_Store
+
+.idea/
+.vscode/
+
+*.log
+
+ml_model/__pycache__/
+dashboard/__pycache__/
+backend/__pycache__/
+
+.env.local

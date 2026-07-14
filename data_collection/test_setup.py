@@ -1,0 +1,1 @@
+print("SmartCampus AI project setup successful!")
