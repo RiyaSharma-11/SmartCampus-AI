@@ -1,0 +1,199 @@
+# This workflow runs every time you push code to GitHub
+# or open a pull request
+
+name: SmartCampus AI — CI Pipeline
+
+on:
+  push:
+    branches:
+      - main        # Run on every push to main branch
+  pull_request:
+    branches:
+      - main        # Run on every pull request to main
+
+jobs:
+
+  # ── Job 1: Code quality checks ───────────────────────────
+  lint:
+    name: Code quality check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Check imports work correctly
+        run: |
+          python -c "import fastapi; print('FastAPI OK')"
+          python -c "import streamlit; print('Streamlit OK')"
+          python -c "import sklearn; print('Scikit-learn OK')"
+          python -c "import mysql.connector; print('MySQL connector OK')"
+          python -c "import kafka; print('Kafka OK')"
+          python -c "from apscheduler.schedulers.background import BackgroundScheduler; print('APScheduler OK')"
+
+  # ── Job 2: ML model tests ─────────────────────────────────
+  test-ml:
+    name: ML model tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Train ML model
+        run: |
+          python ml_model/train_model.py
+
+      - name: Test ML predictions
+        run: |
+          python -c "
+          from ml_model.predict import predict_anomaly
+
+          # Test normal values
+          result = predict_anomaly(15.0)
+          assert result['status'] == 'Normal', \
+              f'Expected Normal for 15.0 but got {result[\"status\"]}'
+          print('PM2.5 15.0 correctly classified as Normal')
+
+          # Test anomaly values
+          result = predict_anomaly(300.0)
+          assert result['status'] == 'Anomaly', \
+              f'Expected Anomaly for 300.0 but got {result[\"status\"]}'
+          print('PM2.5 300.0 correctly classified as Anomaly')
+
+          # Test edge cases
+          result = predict_anomaly(0.1)
+          print(f'PM2.5 0.1 classified as: {result[\"status\"]}')
+
+          print('All ML tests passed!')
+          "
+
+  # ── Job 3: FastAPI structure test ─────────────────────────
+  test-api:
+    name: FastAPI structure test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Train ML model first
+        run: |
+          python ml_model/train_model.py
+
+      - name: Test FastAPI app loads correctly
+        run: |
+          python -c "
+          import os
+          os.environ['OPENAQ_API_KEY'] = 'test_key'
+          os.environ['MYSQL_HOST'] = 'localhost'
+          os.environ['MYSQL_PORT'] = '3306'
+          os.environ['MYSQL_USER'] = 'root'
+          os.environ['MYSQL_PASSWORD'] = 'test'
+          os.environ['MYSQL_DATABASE'] = 'test_db'
+          os.environ['EMAIL_SENDER'] = 'test@test.com'
+          os.environ['EMAIL_PASSWORD'] = 'test'
+          os.environ['EMAIL_RECEIVER'] = 'test@test.com'
+
+          from fastapi.testclient import TestClient
+          from backend.main import app
+
+          client = TestClient(app)
+
+          # Test home endpoint
+          response = client.get('/')
+          assert response.status_code == 200
+          data = response.json()
+          assert 'message' in data
+          print('GET / works correctly')
+          print('FastAPI loads and responds correctly')
+          "
+
+      - name: Verify all endpoint routes exist
+        run: |
+          python -c "
+          import os
+          os.environ['OPENAQ_API_KEY'] = 'test_key'
+          os.environ['MYSQL_HOST'] = 'localhost'
+          os.environ['MYSQL_PORT'] = '3306'
+          os.environ['MYSQL_USER'] = 'root'
+          os.environ['MYSQL_PASSWORD'] = 'test'
+          os.environ['MYSQL_DATABASE'] = 'test_db'
+          os.environ['EMAIL_SENDER'] = 'test@test.com'
+          os.environ['EMAIL_PASSWORD'] = 'test'
+          os.environ['EMAIL_RECEIVER'] = 'test@test.com'
+
+          from backend.main import app
+
+          # Get all registered routes
+          routes = [r.path for r in app.routes]
+          print('Registered routes:', routes)
+
+          required = ['/', '/latest', '/history', '/recent', '/fetch']
+          for route in required:
+              assert route in routes, \
+                  f'Missing route: {route}'
+              print(f'Route {route} exists')
+
+          print('All required endpoints verified!')
+          "
+
+  # ── Job 4: Docker build test ──────────────────────────────
+  test-docker:
+    name: Docker build test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build backend Docker image
+        run: |
+          docker build \
+            -f Dockerfile.backend \
+            -t smartcampus-backend:test \
+            .
+          echo "Backend image built successfully"
+
+      - name: Build dashboard Docker image
+        run: |
+          docker build \
+            -f Dockerfile.dashboard \
+            -t smartcampus-dashboard:test \
+            .
+          echo "Dashboard image built successfully"
+
+      - name: Verify images exist
+        run: |
+          docker images | grep smartcampus
+          echo "Both images built and verified"
