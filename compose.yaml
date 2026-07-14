@@ -51,6 +51,22 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
 
+    container_name: smartcampus-dashboard
+    restart: unless-stopped
+
+    ports:
+      - "8501:8501"
+
+    environment:
+      FASTAPI_URL: http://backend:8000
+
+    depends_on:
+      backend:
+        condition: service_started
 volumes:
   mysql_data:
