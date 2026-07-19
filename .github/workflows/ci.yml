@@ -38,7 +38,8 @@ jobs:
           python -c "import streamlit; print('Streamlit OK')"
           python -c "import sklearn; print('Scikit-learn OK')"
           python -c "import mysql.connector; print('MySQL connector OK')"
-          
+          python -c "from kafka import KafkaProducer; print('Kafka OK')"
+          python -c "import httpx; print('httpx OK')"
           python -c "from apscheduler.schedulers.background import BackgroundScheduler; print('APScheduler OK')"
 
   # ── Job 2: ML model tests ─────────────────────────────────
