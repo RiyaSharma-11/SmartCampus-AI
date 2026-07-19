@@ -10,6 +10,14 @@ from kafka_service.producer import send_aqi_message
 from backend.database.connection import get_database_connection as get_connection
 from backend.scheduler import create_scheduler
 
+
+import time
+from prometheus_client import make_asgi_app
+from backend.metrics import (
+    HTTP_REQUESTS_TOTAL,
+    HTTP_REQUEST_DURATION,
+)
+
 load_dotenv()
 
 # Create the FastAPI app instance
@@ -22,10 +30,42 @@ app = FastAPI(
     ),
     version="1.0.0",
 )
+# ── Prometheus metrics endpoint ──────────────────────────────
+# Prometheus scrapes this URL every 15 seconds
+# to collect all metrics
+
+metrics_app = make_asgi_app()
+app.mount("/metrics", metrics_app)
 # ── Scheduler setup ──────────────────────────────────────────
 # lifespan events start/stop the scheduler with FastAPI
 # so it runs exactly as long as the server runs
+# ── Request tracking middleware ───────────────────────────────
+# This runs before and after EVERY request automatically
+# so we don't need to add tracking to each endpoint
 
+@app.middleware("http")
+async def track_requests(request, call_next):
+    """Track request count and duration for every endpoint."""
+
+    start_time = time.time()
+
+    response = await call_next(request)
+
+    duration = time.time() - start_time
+
+    # Record metrics
+    HTTP_REQUESTS_TOTAL.labels(
+        method=request.method,
+        endpoint=request.url.path,
+        status=response.status_code,
+    ).inc()
+
+    HTTP_REQUEST_DURATION.labels(
+        method=request.method,
+        endpoint=request.url.path,
+    ).observe(duration)
+
+    return response
 @app.on_event("startup")
 def start_scheduler():
     """Start background scheduler when FastAPI starts."""

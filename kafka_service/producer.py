@@ -3,7 +3,7 @@ import time
 
 from kafka import KafkaProducer
 from kafka.errors import NoBrokersAvailable
-
+from backend.metrics import KAFKA_MESSAGES_SENT
 from backend.config import settings
 from backend.logger import logger
 
@@ -84,6 +84,7 @@ def send_aqi_message(message: dict) -> bool:
             record_metadata.partition,
             record_metadata.offset,
         )
+        KAFKA_MESSAGES_SENT.inc()
 
         return True
 

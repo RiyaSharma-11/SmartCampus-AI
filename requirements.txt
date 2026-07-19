@@ -29,6 +29,7 @@ numpy==2.0.2
 packaging==25.0
 pandas==2.3.3
 pillow==11.3.0
+prometheus_client==0.25.0
 protobuf==6.33.6
 pyarrow==21.0.0
 pydantic==2.13.4

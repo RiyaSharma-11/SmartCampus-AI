@@ -5,7 +5,11 @@ from alerts.email_service import send_anomaly_alert
 from backend.database.queries import insert_aqi_reading
 from backend.logger import logger
 from backend.services.ml_service import classify_pm25
-
+from backend.metrics import (
+    AQI_READINGS_TOTAL,
+    ANOMALIES_DETECTED_TOTAL,
+    CURRENT_PM25,
+)
 
 def convert_datetime(
     recorded_at: Optional[str],
@@ -113,6 +117,11 @@ def process_aqi_message(
         ml_result["status"],
         ml_result["anomaly_score"],
     )
+    # Update Prometheus metrics
+    AQI_READINGS_TOTAL.inc()
+    CURRENT_PM25.set(pm25_value)
+    if ml_result["is_anomaly"]:
+        ANOMALIES_DETECTED_TOTAL.inc()
 
     if ml_result["is_anomaly"]:
         try:

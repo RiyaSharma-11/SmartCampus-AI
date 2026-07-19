@@ -10,6 +10,7 @@ COPY backend ./backend
 COPY ml_model ./ml_model
 COPY alerts ./alerts
 COPY data_collection ./data_collection
+COPY kafka_service ./kafka_service
 
 EXPOSE 8000
 
