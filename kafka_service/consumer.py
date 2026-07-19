@@ -20,9 +20,9 @@ def create_consumer() -> KafkaConsumer:
                 value_deserializer=lambda value: json.loads(
                     value.decode("utf-8")
                 ),
-                auto_offset_reset="earliest",
+                auto_offset_reset="latest",
                 enable_auto_commit=True,
-                group_id="smartcampus-aqi-consumers",
+                group_id="smartcampus-aqi-consumers-local",
             )
 
             logger.info(

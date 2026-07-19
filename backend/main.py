@@ -6,10 +6,8 @@ import mysql.connector
 import requests
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
-
-from backend.database import get_connection
-from ml_model.predict import predict_anomaly
-from alerts.email_service import send_anomaly_alert
+from kafka_service.producer import send_aqi_message
+from backend.database.connection import get_database_connection as get_connection
 from backend.scheduler import create_scheduler
 
 load_dotenv()
@@ -261,12 +259,11 @@ def recent_readings(limit: int = 10):
 @app.post("/fetch")
 def fetch_and_store_aqi():
     """
-    Main pipeline endpoint:
+    New Kafka pipeline:
     1. Call OpenAQ API
     2. Validate the reading
-    3. Run ML anomaly detection
-    4. Store everything in MySQL
-    5. Return the result
+    3. Send to Kafka topic
+    4. Consumer handles ML + MySQL + alerts
     """
 
     # Step 1 — get data from OpenAQ
@@ -281,101 +278,42 @@ def fetch_and_store_aqi():
 
     latitude = coordinates.get("latitude")
     longitude = coordinates.get("longitude")
-    recorded_at = convert_openaq_time(
-        datetime_info.get("utc")
-    )
+    recorded_at = datetime_info.get("utc")
     city = location.get("name") or "Unknown"
 
-    # Step 3 — run ML prediction
-    try:
-        ml_result = predict_anomaly(value)
-
-    except (ValueError, TypeError) as error:
+    # Validate PM2.5
+    if value < 0:
         raise HTTPException(
             status_code=422,
-            detail=f"ML prediction failed: {error}",
-        ) from error
-
-    # Step 4 — store in MySQL
-    connection = None
-    cursor = None
-
-    try:
-        connection = get_connection()
-        cursor = connection.cursor()
-
-        sql = """
-            INSERT INTO aqi_readings (
-                city,
-                pm25,
-                latitude,
-                longitude,
-                recorded_at,
-                is_anomaly,
-                anomaly_score,
-                status
-            )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """
-
-        values = (
-            city,
-            value,
-            latitude,
-            longitude,
-            recorded_at,
-            bool(ml_result["is_anomaly"]),
-            float(ml_result["anomaly_score"]),
-            ml_result["status"],
+            detail=f"Invalid PM2.5 value: {value}",
         )
 
-        cursor.execute(sql, values)
-        connection.commit()
-
-        # Get the auto-generated id of the new row
-        reading_id = cursor.lastrowid
-
-    except mysql.connector.Error as error:
-        if connection is not None:
-            connection.rollback()
-
-        raise HTTPException(
-            status_code=500,
-            detail=f"Database insert failed: {error}",
-        ) from error
-
-    finally:
-        if cursor is not None:
-            cursor.close()
-        if connection is not None:
-            connection.close()
-
- # ── Send alert if anomaly detected ───────────────────
-    alert_sent = False
-
-    if ml_result["is_anomaly"]:
-        print(
-            f"Anomaly detected! PM2.5={value} "
-            f"Sending alert email..."
-        )
-        alert_sent = send_anomaly_alert(
-            city=city,
-            pm25=value,
-            anomaly_score=float(ml_result["anomaly_score"]),
-            recorded_at=recorded_at,
-        )
-
-    return {
-        "message": "New PM2.5 reading stored successfully.",
-        "reading_id": reading_id,
+    # Step 3 — build message for Kafka
+    message = {
         "city": city,
         "pm25": value,
         "latitude": latitude,
         "longitude": longitude,
         "recorded_at": recorded_at,
-        "ml_result": ml_result,
-        "alert_sent": alert_sent,
-    }   
+    }
 
-    # Step 5 — return full result to caller
-    
+    # Step 4 — send to Kafka
+    # Consumer will handle ML + MySQL + email alert
+    success = send_aqi_message(message)
+
+    if not success:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to send message to Kafka.",
+        )
+
+    return {
+        "message": "AQI reading sent to Kafka pipeline.",
+        "city": city,
+        "pm25": value,
+        "latitude": latitude,
+        "longitude": longitude,
+        "recorded_at": recorded_at,
+        "kafka_status": "Message delivered to topic",
+        "next_step": "Consumer will run ML and store in MySQL",
+    }
